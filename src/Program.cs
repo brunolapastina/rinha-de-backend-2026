@@ -1,0 +1,71 @@
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+
+namespace FraudDetection;
+
+public class Program
+{
+   public static async Task Main(string[] args)
+   {
+      var builder = WebApplication.CreateSlimBuilder(args);
+
+      // Wire up source-generated serializer
+      builder.Services.ConfigureHttpJsonOptions(opts =>
+         opts.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonContext.Default));
+
+      var socketPath = Environment.GetEnvironmentVariable("SOCKET_PATH");
+      if (!string.IsNullOrEmpty(socketPath))
+      {
+         if (File.Exists(socketPath))
+         {
+            File.Delete(socketPath);
+         }
+      }
+
+      builder.WebHost.ConfigureKestrel(options =>
+      {
+         if (!string.IsNullOrEmpty(socketPath))
+         {
+            options.ListenUnixSocket(socketPath, o => o.Protocols = HttpProtocols.Http1);
+         }
+         else
+         {
+            options.ListenAnyIP(8080, o => o.Protocols = HttpProtocols.Http1);
+         }
+         options.AddServerHeader = false;
+         options.AllowSynchronousIO = false;
+         options.Limits.MaxRequestBodySize = 8 * 1024;
+         options.Limits.MaxRequestHeadersTotalSize = 4 * 1024;
+         options.Limits.MaxRequestLineSize = 1 * 1024;
+         options.Limits.MaxConcurrentUpgradedConnections = 0;
+         options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(5);
+         options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(5);
+      });
+
+      Console.WriteLine("Initializing service");
+      using var detectionEngine = new FraudDetector(builder.Configuration);
+      await detectionEngine.Initialize();    // Force initialization of service now
+      Console.WriteLine("Done initializing service");
+      builder.Services.AddSingleton(detectionEngine);
+
+      // Add services to the container.
+      var app = builder.Build();
+
+      app.MapGet("/ready", () =>
+      {
+         return TypedResults.Ok();
+      });
+
+      app.MapPost("/fraud-score", async (FraudScoreRequest req, FraudDetector detector, HttpContext ctx) =>
+      {
+         var fraudCount = await detector.GetFraudCount(req);
+         var response = PrecomputedResponses.GetResponse(fraudCount);
+
+         ctx.Response.StatusCode = 200;
+         ctx.Response.ContentType = "application/json";
+         ctx.Response.ContentLength = response.Length;
+         await ctx.Response.Body.WriteAsync(response);
+      });
+
+      await app.RunAsync();
+   }
+}
