@@ -1,3 +1,4 @@
+using System.Buffers;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 namespace FraudDetection;
@@ -63,7 +64,14 @@ public class Program
          ctx.Response.StatusCode = 200;
          ctx.Response.ContentType = "application/json";
          ctx.Response.ContentLength = response.Length;
-         await ctx.Response.Body.WriteAsync(response);
+         ctx.Response.Headers.Date = default;   // Suppress Kestrel's per-request Date header (~25B + cost of formatting).
+         var writer = ctx.Response.BodyWriter;
+         writer.Write(response.AsSpan());
+         var ft = writer.FlushAsync();
+         if (!ft.IsCompletedSuccessfully)
+         {
+            await ft.ConfigureAwait(false);
+         }
       });
 
       await app.RunAsync();
