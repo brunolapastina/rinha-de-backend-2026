@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -48,6 +49,7 @@ public sealed class FraudDetector(IConfiguration configuration) : IDisposable
       return mccRisk;
    }
 
+   [MethodImpl(MethodImplOptions.AggressiveInlining)]
    private float GetMccRisk(string merchantId) =>
       _mccRisk.TryGetValue(merchantId, out float risk) ? risk : 0.5f;
 
@@ -58,35 +60,39 @@ public sealed class FraudDetector(IConfiguration configuration) : IDisposable
       await _referenceVectors.Initialize();
    }
 
-   public async Task<int> GetFraudCount(FraudScoreRequest req)
+   public int GetFraudCount(FraudScoreRequest req)
    {
-      var vector = VectorizeTransaction(req);
-      return await _referenceVectors.GetFraudCountFromKNearest(vector);
+      Span<float> vector = stackalloc float[16];
+      Vectorize(req, vector);
+      return _referenceVectors.GetFraudCountFromKNearest(vector);
    }
 
-   private List<float> VectorizeTransaction(FraudScoreRequest req)
+   [MethodImpl(MethodImplOptions.AggressiveInlining)]
+   private void Vectorize(FraudScoreRequest req, Span<float> dst)
    {
-      var vector = new List<float>(14)
-      {
-         Clamp(((float)req.Transaction.Amount) / _normalizationConfig.MaxAmount),
-         Clamp(req.Transaction.Installments / _normalizationConfig.MaxInstallments),
-         Clamp((float)(req.Transaction.Amount / req.Customer.AvgAmount) / _normalizationConfig.AmountVsAvgRatio),
-         (float)req.Transaction.RequestedAt.Hour / 23,
-         (float)req.Transaction.RequestedAt.DayOfWeek / 6,
-         req.LastTransaction is null ? -1 : Clamp(((float)(req.Transaction.RequestedAt - req.LastTransaction.Timestamp).TotalMinutes) / _normalizationConfig.MaxMinutes),
-         req.LastTransaction is null ? -1 : Clamp(((float)req.LastTransaction.KmFromCurrent) / _normalizationConfig.MaxKm),
-         Clamp(((float)req.Terminal.KmFromHome) / _normalizationConfig.MaxKm),
-         Clamp(((float)req.Customer.TxCount24h) / _normalizationConfig.MaxTxCount24h),
-         req.Terminal.IsOnline ? 1 : 0,
-         req.Terminal.CardPresent ? 1 : 0,
-         req.Customer.KnownMerchants.Contains(req.Merchant.Id) ? 0 : 1,
-         GetMccRisk(req.Merchant.Mcc),
-         Clamp(((float)req.Merchant.AvgAmount) / _normalizationConfig.MaxMerchantAvgAmount)
-      };
-      
-      return vector;
+      dst[0] = Clamp(req.Transaction.Amount / _normalizationConfig.MaxAmount);
+      dst[1] = Clamp(req.Transaction.Installments / _normalizationConfig.MaxInstallments);
+      dst[2] = Clamp((req.Transaction.Amount / req.Customer.AvgAmount) / _normalizationConfig.AmountVsAvgRatio);
+      dst[3] = req.Transaction.RequestedAt.Hour / 23f;
+      var requestAtUtc = req.Transaction.RequestedAt.UtcDateTime;
+      dst[4] = GetDayOfWeekStartingOnMonday(requestAtUtc.DayOfWeek) / 6f;
+      dst[5] = req.LastTransaction is null ? -1 : Clamp(((float)(requestAtUtc - req.LastTransaction.Timestamp.UtcDateTime).TotalMinutes) / _normalizationConfig.MaxMinutes);
+      dst[6] = req.LastTransaction is null ? -1 : Clamp(req.LastTransaction.KmFromCurrent / _normalizationConfig.MaxKm);
+      dst[7] = Clamp(req.Terminal.KmFromHome / _normalizationConfig.MaxKm);
+      dst[8] = Clamp(req.Customer.TxCount24h / _normalizationConfig.MaxTxCount24h);
+      dst[9] = req.Terminal.IsOnline ? 1 : 0;
+      dst[10] = req.Terminal.CardPresent ? 1 : 0;
+      dst[11] = req.Customer.KnownMerchants.Contains(req.Merchant.Id) ? 0 : 1;
+      dst[12] = GetMccRisk(req.Merchant.Mcc);
+      dst[13] = Clamp(req.Merchant.AvgAmount / _normalizationConfig.MaxMerchantAvgAmount);
+      dst[14] = 0;
+      dst[15] = 0;
    }
 
+   [MethodImpl(MethodImplOptions.AggressiveInlining)]
    private static float Clamp(float value) =>
       Math.Clamp(value, 0, 1);
+
+   [MethodImpl(MethodImplOptions.AggressiveInlining)]
+   private static int GetDayOfWeekStartingOnMonday(DayOfWeek d) => d == DayOfWeek.Sunday ? 6 : (int)d - 1;
 }

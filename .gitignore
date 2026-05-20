@@ -22,3 +22,5 @@ publish/
 Thumbs.db
 resources/references.json
 resources/references.json.gz
+
+test/results.json

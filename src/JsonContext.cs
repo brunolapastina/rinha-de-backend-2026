@@ -14,7 +14,7 @@ public record FraudScoreRequest(
 public record Transaction(
     [property: JsonPropertyName("amount")] float Amount, 
     [property: JsonPropertyName("installments")] int Installments, 
-    [property: JsonPropertyName("requested_at")] DateTime RequestedAt);
+    [property: JsonPropertyName("requested_at")] DateTimeOffset RequestedAt);
 
 public record Customer(
     [property: JsonPropertyName("avg_amount")] float AvgAmount, 
@@ -32,7 +32,7 @@ public record Terminal(
     [property: JsonPropertyName("km_from_home")] float KmFromHome);
 
 public record LastTransaction(
-    [property: JsonPropertyName("timestamp")] DateTime Timestamp, 
+    [property: JsonPropertyName("timestamp")] DateTimeOffset Timestamp, 
     [property: JsonPropertyName("km_from_current")] float KmFromCurrent);
 
 public record FraudScoreResponse(
@@ -48,7 +48,7 @@ public record NormalizationConfig(
     [property: JsonPropertyName("max_tx_count_24h")] float MaxTxCount24h,
     float MaxMerchantAvgAmount);
 
-public record Reference(List<float> Vector, string Label);
+public record Reference(float[] Vector, string Label);
 
 [JsonSourceGenerationOptions(
     WriteIndented = false,

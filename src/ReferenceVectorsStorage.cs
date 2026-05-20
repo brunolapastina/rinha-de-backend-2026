@@ -1,53 +1,44 @@
+using System.Diagnostics;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using System.Text.Json;
-using Hnsw;
-using Hnsw.RamStorage;
 
 namespace FraudDetection;
 
 public sealed class ReferenceVectorsStorage : IDisposable
 {
+   const int K = 5;
+
    private readonly IConfiguration _configuration;
-   private readonly RamStorageProvider _storage = new();
-   private readonly HnswIndex _index;
-   private readonly Dictionary<Guid, bool> _resultsDic = [];
+   private readonly List<(float[] Vector, bool IsFraud)> _references = [];
 
    public ReferenceVectorsStorage(IConfiguration configuration)
    {
-      _index = new HnswIndex(14, _storage)
-      {
-         M = 16,
-         EfConstruction = 200,
-         DistanceFunction = new EuclideanDistance() // built-in, SIMD-accelerated
-      };
       _configuration = configuration;
    }
 
    public void Dispose()
    {
-      _storage?.Dispose();
    }
 
    public async Task Initialize()
    {
-      const int batchSize = 100;
-
       Console.WriteLine("Loading json");
       var references = await LoadReferences();
-      var vectorsDic = new Dictionary<Guid, List<float>>(batchSize);
-      Console.WriteLine($"Creating vectors for {references.Count} references");
-      for (int i = 0; i < references.Count; i += batchSize)
-      {
-         vectorsDic.Clear();
-         foreach(var reference in references.Skip(i).Take(batchSize))
-         {
-            var id = Guid.NewGuid();
-            vectorsDic.Add(id, reference.Vector);
-            _resultsDic.Add(id, reference.Label.Equals("fraud", StringComparison.OrdinalIgnoreCase));
-         }
 
-         Console.WriteLine($"Adding vectors with {batchSize}: {i} of {references.Count}  ({100.0 * i / references.Count:0.00}%)");
-         await _index.AddNodesAsync(vectorsDic);
-      }
+      _references.AddRange(references.Select(it =>
+      {
+         var paddedVector = new float[16];
+         it.Vector.CopyTo(paddedVector, 0);
+         paddedVector[14] = 0;
+         paddedVector[15] = 0;
+
+         return (
+            Vector: paddedVector, 
+            IsFraud: it.Label.Equals("fraud", StringComparison.OrdinalIgnoreCase)
+         );
+      }));
 
       Console.WriteLine("Done");
    }
@@ -62,14 +53,125 @@ public sealed class ReferenceVectorsStorage : IDisposable
       return (await JsonSerializer.DeserializeAsync(openStream, AppJsonContext.Default.ListReference))!;
    }
 
-   public async Task<int> GetFraudCountFromKNearest(List<float> query)
+   public int GetFraudCountFromKNearest(ReadOnlySpan<float> query)
    {
-      IEnumerable<VectorResult> neighbors = await _index.GetTopKAsync(query, count: 5);
-      //foreach (VectorResult r in neighbors)
+      Span<float> bestDist = stackalloc float[K];
+      Span<bool> bestFlag = stackalloc bool[K];
+
+      bestDist.Fill(float.PositiveInfinity);
+      bestFlag.Clear();
+
+      //if (Vector.IsHardwareAccelerated && Vector<float>.Count == 4)
       //{
-      //   Console.WriteLine($"id={r.GUID} distance={r.Distance:F4} result={_resultsDic[r.GUID]}");
+         CalculateDistanceUsingSimd4(query, bestDist, bestFlag);
+      //}
+      //else
+      //{
+      //   for(int i = 0; i < _references.Count; i++)
+      //   {
+      //      var distance = CalculateDistance(_references[i].Vector.AsSpan(), query);
+      //      //if (distance < tau)
+      //      //{
+      //      //   heap.Enqueue(i, distance);
+      //      //   if (heap.Count > K)
+      //      //   {
+      //      //      heap.Dequeue(); // remove the farthest
+      //      //      // peek the new worst distance
+      //      //      tau = heap.UnorderedItems.Max(x => x.Priority);
+      //      //   }
+      //      //}
+      //   }
       //}
 
-      return neighbors.Count(it => _resultsDic[it.GUID]);
+      return bestFlag.Count(true);
+   }
+
+   private void CalculateDistanceUsingSimd4(ReadOnlySpan<float> query, Span<float> bestDist, Span<bool> bestFlag)
+   {
+      float worst = float.PositiveInfinity;
+
+      // Pre vectorize the query vector
+      var qv0 = new Vector<float>(query.Slice(0, 4));
+      var qv1 = new Vector<float>(query.Slice(4, 4));
+      var qv2 = new Vector<float>(query.Slice(8, 4));
+      var qv3 = new Vector<float>(query.Slice(12, 4));
+
+      for (int i = 0; i < _references.Count; i++)
+      {
+         var va0 = new Vector<float>(_references[i].Vector.AsSpan().Slice(0, 4));
+         var va1 = new Vector<float>(_references[i].Vector.AsSpan().Slice(4, 4));
+         var va2 = new Vector<float>(_references[i].Vector.AsSpan().Slice(8, 4));
+         var va3 = new Vector<float>(_references[i].Vector.AsSpan().Slice(12, 4));
+
+         var diff0 = va0 - qv0;
+         var diff1 = va1 - qv1;
+         var diff2 = va2 - qv2;
+         var diff3 = va3 - qv3;
+
+         float distance = Vector.Dot(diff0, diff0);
+         distance += Vector.Dot(diff1, diff1);
+         distance += Vector.Dot(diff2, diff2);
+         distance += Vector.Dot(diff3, diff3);
+
+         if (distance < worst)
+         {
+            InsertTopK(bestDist, bestFlag, distance, _references[i].IsFraud);
+            worst = bestDist[K - 1];
+         }
+      }
+   }
+
+   private static float CalculateDistance(ReadOnlySpan<float> spanA, ReadOnlySpan<float> spanB)
+   {
+      Debug.Assert(spanA.Length == spanB.Length, $"Vectors must have the same dimension. Vector a has {spanA.Length} dimensions, vector b has {spanB.Length} dimensions.");
+
+      float sum = 0f;
+      int i = 0;
+
+      var test = Vector128.IsHardwareAccelerated;
+
+      if (Vector.IsHardwareAccelerated)
+      {
+         int width = Vector<float>.Count;
+         Vector<float> acc = Vector<float>.Zero;
+         int limit = spanA.Length - width;
+
+         for (; i <= limit; i += width)
+         {
+               var va = new Vector<float>(spanA.Slice(i, width));
+               var vb = new Vector<float>(spanB.Slice(i, width));
+               var diff = va - vb;
+               acc += diff * diff;
+         }
+         sum = Vector.Dot(acc, Vector<float>.One);
+      }
+
+      for (; i < spanA.Length; i++)
+      {
+         float diff = spanA[i] - spanB[i];
+         sum += diff * diff;
+      }
+
+      return sum;
+   }
+
+   [MethodImpl(MethodImplOptions.AggressiveInlining)]
+   private static void InsertTopK(Span<float> bestDist, Span<bool> bestFlag, float newDist, bool newFlag)
+   {
+      int pos = K - 1;
+
+      while (pos > 0 && bestDist[pos - 1] > newDist)
+      { 
+         pos--;
+      }
+
+      for (int j = K - 1; j > pos; j--) 
+      {
+         bestDist[j] = bestDist[j - 1]; 
+         bestFlag[j] = bestFlag[j - 1]; 
+      }
+
+      bestDist[pos] = newDist;
+      bestFlag[pos] = newFlag;
    }
 }

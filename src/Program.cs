@@ -57,7 +57,7 @@ public class Program
 
       app.MapPost("/fraud-score", async (FraudScoreRequest req, FraudDetector detector, HttpContext ctx) =>
       {
-         var fraudCount = await detector.GetFraudCount(req);
+         var fraudCount = detector.GetFraudCount(req);
          var response = PrecomputedResponses.GetResponse(fraudCount);
 
          ctx.Response.StatusCode = 200;

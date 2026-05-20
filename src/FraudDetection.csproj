@@ -28,9 +28,4 @@
     <UseSystemResourceKeys>true</UseSystemResourceKeys>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="HnswLite" Version="1.2.0" />
-    <PackageReference Include="HnswLite.RamStorage" Version="1.2.0" />
-  </ItemGroup>
-
 </Project>
