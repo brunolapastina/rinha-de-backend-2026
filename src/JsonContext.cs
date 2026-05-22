@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 namespace FraudDetection;
 
 public record FraudScoreRequest(
-    string Id,
     Transaction Transaction,
     Customer Customer,
     Merchant Merchant,
