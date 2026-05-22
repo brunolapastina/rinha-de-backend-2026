@@ -7,7 +7,7 @@ namespace FraudDetection;
 
 public class Program
 {
-   public static async Task Main(string[] args)
+   public static void Main(string[] args)
    {
       GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
       
@@ -30,7 +30,6 @@ public class Program
             opts.MaxConnections = 1024;
          });
       }
-
 
       var socketPath = Environment.GetEnvironmentVariable("SOCKET_PATH");
       if (!string.IsNullOrEmpty(socketPath))
@@ -62,8 +61,7 @@ public class Program
       });
 
       Console.WriteLine("Initializing service");
-      var detectionEngine = new FraudDetector(builder.Configuration);
-      await detectionEngine.Initialize();    // Force initialization of service now
+      var detectionEngine = new FraudDetector(builder.Configuration);   // Force initialization of service now
       GC.Collect();
       Console.WriteLine("Done initializing service");
       builder.Services.AddSingleton(detectionEngine);
@@ -91,6 +89,6 @@ public class Program
          }
       });
 
-      await app.RunAsync();
+      app.Run();
    }
 }

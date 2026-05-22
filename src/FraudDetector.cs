@@ -14,22 +14,22 @@ public sealed class FraudDetector(IConfiguration configuration)
       ];
    private readonly float[] _dayOfTheWeekMapping = [6f/6f, 0f/6f, 1f/6f, 2f/6f, 3f/6f, 4f/6f, 5f/6f];
 
-   private NormalizationConfig _normalizationConfig = null!;
-   private Dictionary<string, float> _mccRisk = null!;
-   private ReferenceVectorsStorage _referenceVectors = new(configuration);
+   private readonly NormalizationConfig _normalizationConfig = LoadNormalization(configuration);
+   private readonly Dictionary<string, float> _mccRisk = LoadMccRisk(configuration);
+   private readonly ReferenceVectorsStorage _referenceVectors = new(configuration);
 
-   private async Task<NormalizationConfig> LoadNormalization()
+   private static NormalizationConfig LoadNormalization(IConfiguration configuration)
    {
       var path = configuration.GetSection("NormalizationFilePath").Get<string>() ??
          throw new InvalidDataException("Could not load normalization configuration");
 
       using var openStream = File.OpenRead(path);
 
-      return await JsonSerializer.DeserializeAsync(openStream, AppJsonContext.Default.NormalizationConfig) ??
+      return JsonSerializer.Deserialize(openStream, AppJsonContext.Default.NormalizationConfig) ??
          throw new InvalidDataException("Could not load normalization configuration");
    }
 
-   private async Task<Dictionary<string, float>> LoadMccRisk()
+   private static Dictionary<string, float> LoadMccRisk(IConfiguration configuration)
    {
       var path = configuration.GetSection("MccRiskFilePath").Get<string>() ??
          throw new InvalidDataException("Could not load normalization configuration");
@@ -37,20 +37,13 @@ public sealed class FraudDetector(IConfiguration configuration)
       JsonNode? json;
       using (var openStream = File.OpenRead(path))
       {
-         json = await JsonNode.ParseAsync(openStream);
+         json = JsonNode.Parse(openStream);
       }
 
       return json!.AsObject().ToDictionary( 
          prop => prop.Key, 
          prop => prop.Value!.GetValue<float>()
       );
-   }
-
-   public async Task Initialize()
-   {
-      _normalizationConfig = await LoadNormalization();
-      _mccRisk = await LoadMccRisk();
-      await _referenceVectors.Initialize();
    }
 
    public int GetFraudCount(FraudScoreRequest req)
@@ -79,7 +72,7 @@ public sealed class FraudDetector(IConfiguration configuration)
          dst[5] = Clamp(((float)(req.Transaction.RequestedAt - req.LastTransaction.Timestamp).TotalMinutes) / _normalizationConfig.MaxMinutes);
          dst[6] = Clamp(req.LastTransaction.KmFromCurrent / _normalizationConfig.MaxKm);
       }
-      
+
       dst[7] = Clamp(req.Terminal.KmFromHome / _normalizationConfig.MaxKm);
       dst[8] = Clamp(req.Customer.TxCount24h / _normalizationConfig.MaxTxCount24h);
       dst[9] = req.Terminal.IsOnline ? 1 : 0;

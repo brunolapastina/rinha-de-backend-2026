@@ -6,17 +6,17 @@ using System.Text.Json;
 
 namespace FraudDetection;
 
-public sealed class ReferenceVectorsStorage(IConfiguration configuration)
+public sealed class ReferenceVectorsStorage
 {
    const int K = 5;
 
-   private readonly List<(float[] Vector, bool IsFraud)> _references = [];
+   private readonly List<(float[] Vector, bool IsFraud)> _references;
 
-   public async Task Initialize()
+   public ReferenceVectorsStorage(IConfiguration configuration)
    {
-      var references = await LoadReferences();
+      var references = LoadReferences(configuration);
 
-      _references.AddRange(references.Select(it =>
+      _references = references.Select(it =>
       {
          var paddedVector = new float[16];
          it.Vector.CopyTo(paddedVector, 0);
@@ -27,17 +27,17 @@ public sealed class ReferenceVectorsStorage(IConfiguration configuration)
             Vector: paddedVector, 
             IsFraud: it.Label.Equals("fraud", StringComparison.OrdinalIgnoreCase)
          );
-      }));
+      }).ToList();
    }
 
-   private async Task<List<Reference>> LoadReferences()
+   private static List<Reference> LoadReferences(IConfiguration configuration)
    {
       var path = configuration.GetSection("ReferencesFilePath").Get<string>() ??
          throw new InvalidDataException("Could not load normalization configuration");
 
       using var openStream = File.OpenRead(path);
 
-      return (await JsonSerializer.DeserializeAsync(openStream, AppJsonContext.Default.ListReference))!;
+      return JsonSerializer.Deserialize(openStream, AppJsonContext.Default.ListReference)!;
    }
 
    public int GetFraudCountFromKNearest(ReadOnlySpan<float> query)
