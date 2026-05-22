@@ -11,15 +11,10 @@ services:
     depends_on:
       - api1
       - api2
-    deploy:
-      resources:
-        limits:
-          cpus: "0.2"
-          memory: 30MB
   
   api1: &api
     build:
-      context: ./FraudDetection
+      context: ./
       dockerfile: Dockerfile
     image: rinha-backend-2026
     user: "101:101" 
@@ -29,11 +24,6 @@ services:
       - sock:/run/sock
     environment:
       - SOCKET_PATH=/run/sock/api1.sock
-    deploy:
-      resources:
-        limits:
-          cpus: "0.4"
-          memory: 160MB
 
   api2:
     <<: *api
