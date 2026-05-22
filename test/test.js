@@ -71,7 +71,10 @@ export default function () {
             if (body.approved) tnCount.add(1); // correctly approved legit
             else tpCount.add(1);               // correctly denied fraud
         } else {
-            if (body.approved) fnCount.add(1); // fraud approved (missed fraud)
+            if (body.approved) {
+                fnCount.add(1); // fraud approved (missed fraud)
+                console.log(JSON.stringify(entry.request));
+            }
             else fpCount.add(1);               // legit denied (false block)
         }
     } else {

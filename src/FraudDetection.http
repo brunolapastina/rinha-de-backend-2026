@@ -77,3 +77,43 @@ Content-Type: application/json
 }
 
 ###
+
+
+### False negative
+### "expected_approved": false,
+### "expected_fraud_score": 0.6
+POST {{FraudDetection_HostAddress}}/fraud-score
+Content-Type: application/json
+
+{
+  "id":"tx-1753927113",
+  "transaction": {
+    "amount":1181.29,
+    "installments":4,
+    "requested_at":"2026-03-25T06:50:38Z"
+  },
+  "customer": {
+    "avg_amount":130.34,
+    "tx_count_24h":4,
+    "known_merchants": [
+      "MERC-005",
+      "MERC-019",
+      "MERC-004",
+      "MERC-001"
+    ]
+  },
+  "merchant": {
+    "id":"MERC-049",
+    "mcc":"5912",
+    "avg_amount":133.8
+  },
+  "terminal": {
+    "is_online":true,
+    "card_present":false,
+    "km_from_home":110.5293823454
+  },
+  "last_transaction": {
+    "timestamp":"2026-03-25T05:08:38Z",
+    "km_from_current":263.1256718475
+  }
+}
