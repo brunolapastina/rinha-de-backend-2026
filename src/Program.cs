@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Runtime;
+using Kestrel.Transport.IoUring;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 namespace FraudDetection;
@@ -7,11 +9,28 @@ public class Program
 {
    public static async Task Main(string[] args)
    {
+      GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+      
       var builder = WebApplication.CreateSlimBuilder(args);
+
+      builder.Logging.ClearProviders();
 
       // Wire up source-generated serializer
       builder.Services.ConfigureHttpJsonOptions(opts =>
          opts.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonContext.Default));
+
+      if (OperatingSystem.IsLinux())
+      {
+         Console.WriteLine("Using IO ring");
+         builder.WebHost.UseIoUring(opts =>
+         {
+            //var ringSize = int.TryParse(Environment.GetEnvironmentVariable("IO_URING_SIZE"), out var rs) && rs > 0 ? rs : 256;
+            //var maxConn = int.TryParse(Environment.GetEnvironmentVariable("IO_URING_MAX_CONN"), out var mc) && mc > 0 ? mc : 1024;
+            opts.RingSize = 4096;
+            opts.MaxConnections = 1024;
+         });
+      }
+
 
       var socketPath = Environment.GetEnvironmentVariable("SOCKET_PATH");
       if (!string.IsNullOrEmpty(socketPath))
@@ -30,7 +49,7 @@ public class Program
          }
          else
          {
-            options.ListenAnyIP(8080, o => o.Protocols = HttpProtocols.Http1);
+            options.ListenAnyIP(9999, o => o.Protocols = HttpProtocols.Http1);
          }
          options.AddServerHeader = false;
          options.AllowSynchronousIO = false;
@@ -43,18 +62,16 @@ public class Program
       });
 
       Console.WriteLine("Initializing service");
-      using var detectionEngine = new FraudDetector(builder.Configuration);
+      var detectionEngine = new FraudDetector(builder.Configuration);
       await detectionEngine.Initialize();    // Force initialization of service now
+      GC.Collect();
       Console.WriteLine("Done initializing service");
       builder.Services.AddSingleton(detectionEngine);
 
       // Add services to the container.
       var app = builder.Build();
 
-      app.MapGet("/ready", () =>
-      {
-         return TypedResults.Ok();
-      });
+      app.MapGet("/ready", () => TypedResults.Ok());
 
       app.MapPost("/fraud-score", async (FraudScoreRequest req, FraudDetector detector, HttpContext ctx) =>
       {

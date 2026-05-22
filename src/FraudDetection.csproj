@@ -28,4 +28,8 @@
     <UseSystemResourceKeys>true</UseSystemResourceKeys>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Kestrel.Transport.IoUring" Version="2.2.2" />
+  </ItemGroup>
+
 </Project>
