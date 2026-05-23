@@ -9,7 +9,6 @@
     <PublishTrimmed>true</PublishTrimmed>
 
     <!-- AOT codegen: target Haswell (AVX2, FMA, BMI1/2, POPCNT, F16C). -->
-    <!-- <IlcInstructionSet>avx2</IlcInstructionSet> -->
     <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
     <OptimizationPreference>Speed</OptimizationPreference>
 
@@ -26,6 +25,11 @@
     <MetricsSupport>false</MetricsSupport>
     <StackTraceSupport>false</StackTraceSupport>
     <UseSystemResourceKeys>true</UseSystemResourceKeys>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != 'osx-x64'">
+    <!-- Exclude IlcInstructionSet on Mac, but apply it on Windows/Linux -->
+    <IlcInstructionSet>avx2</IlcInstructionSet>
   </PropertyGroup>
 
   <ItemGroup>
