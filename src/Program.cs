@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Numerics;
 using System.Runtime;
 using Kestrel.Transport.IoUring;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -19,7 +20,7 @@ public class Program
       builder.Services.ConfigureHttpJsonOptions(opts =>
          opts.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonContext.Default));
 
-      if (OperatingSystem.IsLinux())
+      if (false)
       {
          Console.WriteLine("Using IO ring");
          builder.WebHost.UseIoUring(opts =>
@@ -60,6 +61,7 @@ public class Program
          options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(5);
       });
 
+      Console.WriteLine($"SIMD Vector support is {Vector<float>.Count} floats wide");
       Console.WriteLine("Initializing service");
       var detectionEngine = new FraudDetector(builder.Configuration);   // Force initialization of service now
       GC.Collect();
