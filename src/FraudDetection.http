@@ -1,4 +1,4 @@
-@FraudDetection_HostAddress = http://localhost:8080
+@FraudDetection_HostAddress = http://localhost:9999
 
 ### Is Ready
 GET {{FraudDetection_HostAddress}}/ready
