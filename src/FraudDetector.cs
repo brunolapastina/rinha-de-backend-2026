@@ -16,7 +16,7 @@ public sealed class FraudDetector(IConfiguration configuration)
 
    private readonly NormalizationConfig _normalizationConfig = LoadNormalization(configuration);
    private readonly Dictionary<string, float> _mccRisk = LoadMccRisk(configuration);
-   private readonly ReferenceVectorsStorage _referenceVectors = new(configuration);
+   private readonly BruteForceFinder _referenceVectors = new(configuration);
 
    private static NormalizationConfig LoadNormalization(IConfiguration configuration)
    {

@@ -6,13 +6,13 @@ using System.Text.Json;
 
 namespace FraudDetection;
 
-public sealed class ReferenceVectorsStorage
+public sealed class BruteForceFinder
 {
    const int K = 5;
 
    private readonly List<(float[] Vector, bool IsFraud)> _references;
 
-   public ReferenceVectorsStorage(IConfiguration configuration)
+   public BruteForceFinder(IConfiguration configuration)
    {
       var references = LoadReferences(configuration);
 
