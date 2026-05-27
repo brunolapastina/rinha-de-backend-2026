@@ -5,18 +5,17 @@ using System.Text.Json.Nodes;
 
 namespace FraudDetection;
 
-public sealed class FraudDetector(IConfiguration configuration)
+public sealed class TransactionVectorizer(IConfiguration configuration)
 {
-   private readonly float[] _hourMapping = [ 
+   private static readonly float[] _hourMapping = [ 
       0f/23f, 1f/23f, 2f/23f, 3f/23f, 4f/23f, 5f/23f, 6f/23f, 7f/23f, 8f/23f, 9f/23f, 
       10f/23f, 11f/23f, 12f/23f, 13f/23f, 14f/23f, 15f/23f, 16f/23f, 17f/23f, 18f/23f, 19f/23f,
       20f/23f, 21f/23f, 22f/23f, 23f/23f
       ];
-   private readonly float[] _dayOfTheWeekMapping = [6f/6f, 0f/6f, 1f/6f, 2f/6f, 3f/6f, 4f/6f, 5f/6f];
+   private static readonly float[] _dayOfTheWeekMapping = [6f/6f, 0f/6f, 1f/6f, 2f/6f, 3f/6f, 4f/6f, 5f/6f];
 
    private readonly NormalizationConfig _normalizationConfig = LoadNormalization(configuration);
    private readonly Dictionary<string, float> _mccRisk = LoadMccRisk(configuration);
-   private readonly BruteForceFinder _referenceVectors = new(configuration);
 
    private static NormalizationConfig LoadNormalization(IConfiguration configuration)
    {
@@ -46,15 +45,8 @@ public sealed class FraudDetector(IConfiguration configuration)
       );
    }
 
-   public int GetFraudCount(FraudScoreRequest req)
-   {
-      Span<float> vector = stackalloc float[16];
-      Vectorize(req, vector);
-      return _referenceVectors.GetFraudCountFromKNearest(vector);
-   }
-
    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-   private void Vectorize(FraudScoreRequest req, Span<float> dst)
+   public void Vectorize(FraudScoreRequest req, Span<float> dst)
    {
       dst[0] = Clamp(req.Transaction.Amount / _normalizationConfig.MaxAmount);
       dst[1] = Clamp(req.Transaction.Installments / _normalizationConfig.MaxInstallments);

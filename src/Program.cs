@@ -1,8 +1,11 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime;
+using FraudDetection.Ivf;
 using Kestrel.Transport.IoUring;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Net.Http.Headers;
 
 namespace FraudDetection;
 
@@ -11,6 +14,9 @@ public class Program
    public static void Main(string[] args)
    {
       GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+
+      ThreadPool.SetMinThreads(workerThreads: 4, completionPortThreads: 1);
+      ThreadPool.SetMaxThreads(workerThreads: 4, completionPortThreads: 2);
       
       var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -62,26 +68,40 @@ public class Program
       });
 
       Console.WriteLine($"SIMD Vector support is {Vector<float>.Count} floats wide");
+
+      Console.WriteLine("Loading references");
+      ReferenceStore refStore = new(builder.Configuration);
+      
+      var index = new IvfIndex();
       Console.WriteLine("Initializing service");
-      var detectionEngine = new FraudDetector(builder.Configuration);   // Force initialization of service now
+      var stopwatch = Stopwatch.StartNew();
+      index.Build(refStore.References, kmeansSeed: 42); // seed makes builds reproducible
+      stopwatch.Stop();
+      Console.WriteLine($"Index built in {stopwatch.Elapsed.TotalSeconds:F1}s");
+
+      //var index = new BruteForceFinder(refStore);
+      var vectorizer = new TransactionVectorizer(builder.Configuration);   // Force initialization of service now
+
       GC.Collect();
       Console.WriteLine("Done initializing service");
-      builder.Services.AddSingleton(detectionEngine);
+      
 
       // Add services to the container.
       var app = builder.Build();
 
       app.MapGet("/ready", () => TypedResults.Ok());
 
-      app.MapPost("/fraud-score", async (FraudScoreRequest req, FraudDetector detector, HttpContext ctx) =>
+      app.MapPost("/fraud-score", async (FraudScoreRequest req, HttpContext ctx) =>
       {
-         var fraudCount = detector.GetFraudCount(req);
-         var response = PrecomputedResponses.GetResponse(fraudCount);
+         Span<float> transVector = stackalloc float[16];
+         vectorizer.Vectorize(req, transVector);
+         var result = index.Search(transVector);
+         var response = PrecomputedResponses.GetResponse(result);
 
          ctx.Response.StatusCode = 200;
          ctx.Response.ContentType = "application/json";
          ctx.Response.ContentLength = response.Length;
-         ctx.Response.Headers.Date = default;   // Suppress Kestrel's per-request Date header (~25B + cost of formatting).
+         ctx.Response.Headers.Remove(HeaderNames.Date);   // Suppress Kestrel's per-request Date header (~25B + cost of formatting).
          var writer = ctx.Response.BodyWriter;
          writer.Write(response.AsSpan());
          var ft = writer.FlushAsync();

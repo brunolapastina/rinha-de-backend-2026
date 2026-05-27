@@ -73,10 +73,21 @@ export default function () {
         } else {
             if (body.approved) {
                 fnCount.add(1); // fraud approved (missed fraud)
-                console.log(JSON.stringify(entry.request));
+                console.log(`Approved mismatch on ${entry.request.id}: ` +
+                    `Expected ${entry.expected_approved} ` +
+                    `but received ${body.approved}`);
             }
             else fpCount.add(1);               // legit denied (false block)
         }
+        
+        if(body.fraud_score != entry.expected_fraud_score)
+        {
+            console.log(`Score mismatch on ${entry.request.id}: ` +
+                `Expected ${entry.expected_fraud_score} ` +
+                `but received ${body.fraud_score}`);
+        }
+
+
     } else {
         errorCount.add(1);
     }

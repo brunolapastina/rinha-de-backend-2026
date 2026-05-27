@@ -117,3 +117,83 @@ Content-Type: application/json
     "km_from_current":263.1256718475
   }
 }
+
+###
+
+
+### "expected_approved": false,
+### "expected_fraud_score": 0.8
+POST {{FraudDetection_HostAddress}}/fraud-score
+Content-Type: application/json
+
+{
+  "id": "tx-17443033",
+  "transaction": {
+      "amount": 800.12,
+      "installments": 4,
+      "requested_at": "2026-03-14T06:53:35Z"
+  },
+  "customer": {
+      "avg_amount": 230.53,
+      "tx_count_24h": 4,
+      "known_merchants": [
+          "MERC-018",
+          "MERC-002",
+          "MERC-007"
+      ]
+  },
+  "merchant": {
+      "id": "MERC-053",
+      "mcc": "5311",
+      "avg_amount": 93.82
+  },
+  "terminal": {
+      "is_online": true,
+      "card_present": false,
+      "km_from_home": 35.5655724731
+  },
+  "last_transaction": {
+      "timestamp": "2026-03-14T05:23:35Z",
+      "km_from_current": 58.3658399243
+  }
+}
+
+###
+
+
+### "expected_approved": true,
+### "expected_fraud_score": 0.4
+POST {{FraudDetection_HostAddress}}/fraud-score
+Content-Type: application/json
+
+{
+    "id": "tx-130268334",
+    "transaction": {
+        "amount": 917.65,
+        "installments": 3,
+        "requested_at": "2026-03-21T07:40:03Z"
+    },
+    "customer": {
+        "avg_amount": 359.89,
+        "tx_count_24h": 6,
+        "known_merchants": [
+            "MERC-011",
+            "MERC-019",
+            "MERC-010"
+        ]
+    },
+    "merchant": {
+        "id": "MERC-010",
+        "mcc": "5912",
+        "avg_amount": 189.44
+    },
+    "terminal": {
+        "is_online": true,
+        "card_present": false,
+        "km_from_home": 73.4789188284
+    },
+    "last_transaction": {
+        "timestamp": "2026-03-21T06:12:03Z",
+        "km_from_current": 278.7732484142
+    }
+}

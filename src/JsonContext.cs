@@ -36,7 +36,7 @@ public record LastTransaction(
 
 public record FraudScoreResponse(
     [property: JsonPropertyName("approved")] bool Approved, 
-    [property: JsonPropertyName("fraud_score")] double FraudScore);
+    [property: JsonPropertyName("fraud_score")] float FraudScore);
 
 public record NormalizationConfig(
     float MaxAmount,

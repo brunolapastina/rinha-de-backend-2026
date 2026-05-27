@@ -1,15 +1,16 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 
 namespace FraudDetection;
 
-public sealed class BruteForceFinder(IConfiguration configuration)
+public sealed class BruteForceFinder(ReferenceStore refStore)
 {
    const int K = 5;
 
-   private readonly ReferenceStore _refStore = new(configuration);
+   private readonly ReferenceStore _refStore = refStore;
 
-    public int GetFraudCountFromKNearest(ReadOnlySpan<float> query)
+   public int Search(ReadOnlySpan<float> query)
    {
       Span<float> bestDist = stackalloc float[K];
       Span<bool> bestFlag = stackalloc bool[K];
@@ -70,29 +71,37 @@ public sealed class BruteForceFinder(IConfiguration configuration)
       }
    }
 
-   private void CalculateDistanceUsingSimd8(ReadOnlySpan<float> query, Span<float> bestDist, Span<bool> bestFlag)
+   private unsafe void CalculateDistanceUsingSimd8(ReadOnlySpan<float> query, Span<float> bestDist, Span<bool> bestFlag)
    {
       float worst = float.PositiveInfinity;
 
-      // Pre vectorize the query vector
-      var qv0 = new Vector<float>(query.Slice(0, 8));
-      var qv1 = new Vector<float>(query.Slice(8, 8));
-
-      for (int i = 0; i < _refStore.References.Count; i++)
+      fixed (float* pq = query)
       {
-         var va0 = new Vector<float>(_refStore.References[i].Vector.AsSpan().Slice(0, 8));
-         var va1 = new Vector<float>(_refStore.References[i].Vector.AsSpan().Slice(8, 8));
+         // Pre vectorize the query vector
+         var q0 = Vector256.Load(pq);
+         var q1 = Vector256.Load(pq + 8);
 
-         var diff0 = va0 - qv0;
-         var diff1 = va1 - qv1;
-
-         float distance = Vector.Dot(diff0, diff0);
-         distance += Vector.Dot(diff1, diff1);
-
-         if (distance < worst)
+         for (int i = 0; i < _refStore.References.Count; i++)
          {
-            InsertTopK(bestDist, bestFlag, distance, _refStore.References[i].IsFraud);
-            worst = bestDist[K - 1];
+            float distance;
+
+            fixed (float* pr = _refStore.References[i].Vector)
+            {
+               var r0 = Vector256.Load(pr);
+               var r1 = Vector256.Load(pr + 8);
+
+               var diff0 = q0 - r0;
+               var diff1 = q1 - r1;
+
+               var sum = (diff0 * diff0) + (diff1 * diff1);
+               distance = Vector256.Sum(sum);
+            }
+
+            if (distance < worst)
+            {
+               InsertTopK(bestDist, bestFlag, distance, _refStore.References[i].IsFraud);
+               worst = bestDist[K - 1];
+            }
          }
       }
    }
